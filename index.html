@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SignBridge</title>
+  <meta name="description" content="Trò chuyện giữa người Điếc và người nghe: ký hiệu VSL thành chữ, giọng nói thành chữ, câu soạn sẵn. Xử lý ngay trên thiết bị.">
+  <meta name="theme-color" content="#13243A">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Bỏ qua, tới nội dung chính</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M6 8h18a6 6 0 0 1 6 6v6a6 6 0 0 1-6 6h-9l-7 6v-6H6z" fill="var(--sign)"/>
+        <path d="M34 16H20a6 6 0 0 0-6 6v4a6 6 0 0 0 6 6h7l6 5v-5h1V16z" fill="var(--voice-fill)"/>
+      </svg>
+      <span class="brand-name">SignBridge</span>
+    </div>
+    <p class="topbar-note" id="privacy-note">Camera và nhận diện chạy ngay trên máy này</p>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- Conversation -->
+    <section class="view" id="view-talk" aria-labelledby="talk-title">
+      <h1 class="visually-hidden" id="talk-title">Hội thoại</h1>
+      <div class="talk">
+        <div class="stage" id="stage">
+          <div class="stage-video">
+            <video id="video" playsinline muted aria-hidden="true"></video>
+            <canvas id="overlay" aria-hidden="true"></canvas>
+            <div class="stage-empty" id="stage-empty">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 40V22a4 4 0 0 1 8 0v12m0-14V16a4 4 0 0 1 8 0v18m0-14a4 4 0 0 1 8 0v18m-24-4-4-4a4 4 0 0 0-6 6l10 12c3 4 7 6 12 6h4a14 14 0 0 0 14-14V30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <p>Bật camera để người Điếc ký.<br>Kết quả hiện thành chữ cho người nghe.</p>
+            </div>
+          </div>
+          <div class="stage-status" id="stage-status" role="status" aria-live="polite">
+            <p class="status-line" id="status-line">Camera đang tắt</p>
+            <div class="meter" id="meter" hidden><span id="meter-fill"></span></div>
+            <p class="status-help" id="status-help">Ngồi cách camera khoảng 1–1,5 m để thấy đầu, vai và hai tay.</p>
+          </div>
+          <div class="sentence" id="sentence" hidden>
+            <p class="candidate-label" id="sentence-label">Câu đang ghép</p>
+            <button class="btn btn-sign btn-wide" id="sentence-start" type="button">Bắt đầu câu</button>
+            <div id="sentence-body">
+            <div class="word-chips" id="sentence-words" aria-label="Các từ đã ký, chạm để sửa"></div>
+            <p class="sentence-text" id="sentence-text" aria-live="polite"></p>
+            <div class="word-menu" id="word-menu" hidden></div>
+            <div class="meter sentence-meter" id="sentence-meter" hidden><span id="sentence-meter-fill"></span></div>
+            <div class="quick-words" id="quick-words" aria-label="Thêm nhanh từ hay dùng"></div>
+            <form class="add-word" id="add-word" autocomplete="off">
+              <label class="visually-hidden" for="add-word-text">Thêm từ bằng chữ</label>
+              <input id="add-word-text" type="text" placeholder="Thêm từ bằng chữ">
+              <button class="btn btn-quiet" type="submit">Thêm</button>
+            </form>
+            <div class="candidate-actions">
+              <button class="btn btn-sign" id="sentence-send" type="button">Gửi câu</button>
+              <button class="btn btn-quiet" id="sentence-undo" type="button">Xóa từ cuối</button>
+              <button class="btn btn-quiet" id="sentence-clear" type="button">Hủy câu</button>
+            </div>
+            </div>
+          </div>
+          <div class="candidate" id="candidate" hidden>
+            <p class="candidate-label">Ký hiệu nhận được</p>
+            <p class="candidate-text" id="candidate-text"></p>
+            <p class="candidate-alt" id="candidate-alt"></p>
+            <div class="candidate-actions">
+              <button class="btn btn-sign" id="candidate-send" type="button">Gửi vào hội thoại</button>
+              <button class="btn btn-quiet" id="candidate-reject" type="button">Không đúng</button>
+              <button class="btn btn-quiet" id="candidate-teach" type="button">Sai mãi? Dạy app</button>
+            </div>
+          </div>
+          <div class="stage-actions">
+            <button class="btn btn-sign btn-wide" id="camera-toggle" type="button">Bật camera</button>
+            <label class="stage-toggle"><input type="checkbox" id="continuous-mode"> Ký liên tục: bấm Bắt đầu câu rồi ký nhiều từ, app ghép thành câu</label>
+            <button class="btn btn-light btn-wide" id="go-spell" type="button">Tên riêng, từ chưa có ký hiệu? Đánh vần</button>
+          </div>
+        </div>
+
+        <div class="thread">
+          <ol class="messages" id="messages" aria-live="polite" aria-label="Nội dung hội thoại"></ol>
+          <div class="thread-empty" id="thread-empty">
+            <p class="thread-empty-title">Cuộc trò chuyện sẽ hiện ở đây</p>
+            <p>Người Điếc ký trước camera hoặc gõ chữ. Người nghe bấm micro để nói, hoặc gõ chữ. Chạm vào một tin để hiện thật to.</p>
+          </div>
+          <form class="composer" id="composer" autocomplete="off">
+            <div class="who" role="radiogroup" aria-label="Ai đang nhập">
+              <label class="who-option who-hearing"><input type="radio" name="who" value="hearing" checked> Người nghe</label>
+              <label class="who-option who-deaf"><input type="radio" name="who" value="deaf"> Người Điếc</label>
+            </div>
+            <div class="composer-row">
+              <label class="visually-hidden" for="composer-text">Nội dung</label>
+              <textarea id="composer-text" rows="1" placeholder="Gõ nội dung…" enterkeyhint="send"></textarea>
+              <button class="icon-btn mic" id="mic" type="button" aria-label="Nói để chuyển thành chữ">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              </button>
+              <button class="icon-btn send" type="submit" aria-label="Gửi">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+            <p class="composer-hint" id="composer-hint"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fingerspelling -->
+    <section class="view" id="view-spell" aria-labelledby="spell-title" hidden>
+      <div class="page-head">
+        <h1 id="spell-title">Đánh vần</h1>
+        <p>Ký từng chữ cái để viết tên người, địa chỉ hay từ chưa có ký hiệu. Giữ yên tay đến khi vòng tròn đầy thì chữ được nhập. Hạ tay khi xong một tiếng.</p>
+      </div>
+      <div class="spell">
+        <div class="stage" id="spell-stage">
+          <div class="stage-video">
+            <video id="spell-video" playsinline muted aria-hidden="true"></video>
+            <canvas id="spell-overlay" aria-hidden="true"></canvas>
+            <div class="stage-empty" id="spell-stage-empty">
+              <p>Bật camera rồi giơ một tay lên.<br>Chưa quen chữ nào thì xem bảng chữ cái bên dưới.</p>
+            </div>
+            <div class="letter-ring" id="spell-ring" aria-hidden="true"><span id="spell-live"></span></div>
+          </div>
+          <div class="stage-status" role="status" aria-live="polite">
+            <p class="spell-mirror" id="spell-mirror" aria-hidden="true"></p>
+            <p class="status-line" id="spell-status">Camera đang tắt</p>
+            <p class="status-help" id="spell-help">Bật camera để đánh vần bằng chữ cái ngón tay.</p>
+          </div>
+          <div class="stage-actions">
+            <button class="btn btn-sign btn-wide" id="spell-camera" type="button">Bật camera</button>
+          </div>
+        </div>
+
+        <div class="spell-board" id="spell-board">
+          <div class="quiz-run" id="quiz-run" hidden>
+            <p class="candidate-label" id="quiz-progress"></p>
+            <div class="quiz-target-row">
+              <div class="spell-letter-hand" id="quiz-hand"></div>
+              <p class="quiz-target" id="quiz-target"></p>
+            </div>
+            <p class="quiz-feedback" id="quiz-feedback" role="status" aria-live="polite"></p>
+            <button class="btn btn-quiet" id="quiz-stop" type="button">Kết thúc kiểm tra</button>
+          </div>
+          <p class="candidate-label">Chữ đang viết</p>
+          <p class="spell-text is-empty" id="spell-text" aria-live="polite"></p>
+          <p class="spell-empty" id="spell-empty">Chưa có chữ nào. Ký chữ cái, hoặc gõ vào ô bên dưới.</p>
+          <p class="spell-hint" id="spell-hint" role="status" hidden></p>
+          <div class="suggestions" id="spell-suggestions" aria-label="Gợi ý có dấu, chạm để chọn" hidden></div>
+          <div class="mark-row" aria-label="Thêm dấu cho tiếng đang viết">
+            <button type="button" class="mark" data-tone="sac"><span>á</span>Sắc</button>
+            <button type="button" class="mark" data-tone="huyen"><span>à</span>Huyền</button>
+            <button type="button" class="mark" data-tone="hoi"><span>ả</span>Hỏi</button>
+            <button type="button" class="mark" data-tone="nga"><span>ã</span>Ngã</button>
+            <button type="button" class="mark" data-tone="nang"><span>ạ</span>Nặng</button>
+            <button type="button" class="mark" data-mark="trang"><span>ă</span>Trăng</button>
+            <button type="button" class="mark" data-mark="mu"><span>â</span>Mũ</button>
+            <button type="button" class="mark" data-mark="rau"><span>ơ</span>Râu</button>
+          </div>
+          <div class="edit-row">
+            <button class="btn btn-quiet" id="spell-space" type="button">Dấu cách</button>
+            <button class="btn btn-quiet" id="spell-back" type="button">Xóa chữ cuối</button>
+            <button class="btn btn-quiet" id="spell-clear" type="button">Xóa hết</button>
+          </div>
+          <label class="spell-names"><input type="checkbox" id="spell-names"> Viết hoa mỗi tiếng (tên người, địa danh)</label>
+          <label class="visually-hidden" for="spell-type">Gõ thêm chữ</label>
+          <input class="spell-type" id="spell-type" type="text" placeholder="Hoặc gõ chữ ở đây" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <div class="candidate-actions">
+            <button class="btn btn-sign" id="spell-send" type="button">Đưa vào hội thoại</button>
+            <button class="btn btn-quiet" id="spell-show" type="button">Hiện thật to</button>
+            <button class="btn btn-quiet" id="spell-speak" type="button">Đọc to</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="study-card spell-letter" id="spell-letter" hidden>
+        <div class="spell-letter-hand" id="spell-letter-hand"></div>
+        <div>
+          <h2>Chữ <span id="spell-letter-name"></span></h2>
+          <p>Hình là khung bàn tay mẫu, nhìn từ phía camera. Nếu ứng dụng hay nhầm chữ này với tay bạn, hãy dạy lại: làm chữ và giữ yên khoảng 2 giây.</p>
+          <div class="candidate-actions">
+            <button class="btn btn-sign" id="spell-letter-teach" type="button">Dạy chữ này theo tay tôi</button>
+            <button class="btn btn-quiet" id="spell-letter-type" type="button">Nhập chữ này</button>
+            <button class="btn btn-quiet" id="spell-letter-forget" type="button" hidden>Xóa mẫu của tôi</button>
+            <button class="btn btn-quiet" id="spell-letter-close" type="button">Đóng</button>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="section-title">Bảng chữ cái ngón tay</h2>
+      <p class="section-note">23 chữ cái và 2 dấu (mũ, râu) theo chuẩn VSL. Dấu thanh và dấu trăng là động tác chuyển động, chưa có dữ liệu để nhận diện, nên dùng các nút ở trên. <span id="spell-taught"></span></p>
+      <ul class="letter-grid" id="spell-chart"></ul>
+      <section class="study-card quiz-card" aria-labelledby="quiz-title">
+        <h2 id="quiz-title">Kiểm tra bảng chữ cái với người thật</h2>
+        <p>Ứng dụng đưa ra chữ ngẫu nhiên, người thử ký và ứng dụng ghi đúng, nhầm hay hết giờ (10 giây). Không lưu hình ảnh. Dùng để biết ứng dụng nhận tay người thật tốt đến đâu.</p>
+        <form class="quiz-intro" id="quiz-intro" autocomplete="off">
+          <label class="field"><span>Mã người thử (không ghi tên thật)</span><input id="quiz-code" placeholder="Ví dụ: P01" maxlength="20"></label>
+          <label class="field"><span>Số chữ</span><select id="quiz-count"><option value="10">10 chữ</option><option value="25" selected>25 chữ (cả bảng)</option><option value="50">50 chữ (mỗi chữ 2 lần)</option></select></label>
+          <button class="btn btn-sign" type="submit">Bắt đầu kiểm tra</button>
+        </form>
+        <div id="quiz-summary" hidden>
+          <p class="study-score" id="quiz-score"></p>
+          <p id="quiz-missed"></p>
+          <div class="candidate-actions">
+            <button class="btn btn-sign" id="quiz-csv" type="button">Tải tất cả kết quả (CSV)</button>
+            <button class="btn btn-quiet" id="quiz-again" type="button">Người thử mới</button>
+          </div>
+        </div>
+      </section>
+
+      <p class="source-note">Mẫu chữ cái học từ bộ ảnh của một người ký (dự án mã nguồn mở SignLanguage_Vietnamese trên GitHub), nên có thể kém với tay người khác. Hãy dạy lại những chữ hay bị nhầm.</p>
+    </section>
+
+    <!-- Quick phrases -->
+    <section class="view" id="view-phrases" aria-labelledby="phrases-title" hidden>
+      <div class="page-head">
+        <h1 id="phrases-title">Câu nhanh</h1>
+        <p>Chạm một câu để hiện thật to cho người đối diện đọc.</p>
+      </div>
+      <div class="chips" id="phrase-groups" role="tablist" aria-label="Nhóm câu"></div>
+      <ul class="phrase-list" id="phrase-list"></ul>
+      <form class="custom-phrase" id="custom-phrase">
+        <label for="custom-phrase-text">Câu của bạn</label>
+        <div class="composer-row">
+          <input id="custom-phrase-text" type="text" placeholder="Ví dụ: Tôi đến khám theo lịch hẹn lúc 9 giờ">
+          <button class="btn btn-ink" type="submit">Lưu câu</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Sign library -->
+    <section class="view" id="view-signs" aria-labelledby="signs-title" hidden>
+      <div class="page-head">
+        <h1 id="signs-title">Ký hiệu</h1>
+        <p id="signs-summary">Các ký hiệu ứng dụng nhận diện được, kèm hoạt họa minh họa.</p>
+      </div>
+      <div class="search">
+        <label class="visually-hidden" for="sign-search">Tìm ký hiệu</label>
+        <input id="sign-search" type="search" placeholder="Tìm, ví dụ: địa chỉ, bún, ngày của Mẹ">
+      </div>
+      <div class="chips" id="region-filter" aria-label="Lọc theo vùng miền"></div>
+      <p class="search-note" id="search-note" hidden></p>
+      <ul class="sign-grid" id="sign-grid"></ul>
+      <p class="source-note">Muốn tra thêm khoảng 4.000 ký hiệu? Xem <a href="https://qipedc.moet.gov.vn/dictionary" target="_blank" rel="noopener">từ điển QIPEDC của Bộ Giáo dục và Đào tạo</a>.</p>
+    </section>
+
+    <!-- Settings -->
+    <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
+      <div class="page-head">
+        <h1 id="settings-title">Cài đặt</h1>
+      </div>
+      <div class="settings">
+        <fieldset class="setting">
+          <legend>Cỡ chữ hội thoại</legend>
+          <label><input type="radio" name="text-size" value="large"> Lớn</label>
+          <label><input type="radio" name="text-size" value="xlarge"> Rất lớn</label>
+        </fieldset>
+        <label class="setting toggle"><input type="checkbox" id="set-contrast"> <span>Tương phản cao</span></label>
+        <label class="setting toggle"><input type="checkbox" id="set-mirror"> <span>Lật hình xem trước như gương (chỉ hiển thị, không ảnh hưởng nhận diện)</span></label>
+        <label class="setting toggle"><input type="checkbox" id="set-speak"> <span>Tự đọc to khi người Điếc gửi tin</span></label>
+        <fieldset class="setting">
+          <legend>Hạ tay bao lâu thì tự gửi câu (chế độ ký liên tục)</legend>
+          <label><input type="radio" name="pause" value="1500"> 1,5 giây</label>
+          <label><input type="radio" name="pause" value="2500"> 2,5 giây</label>
+          <label><input type="radio" name="pause" value="4000"> 4 giây</label>
+          <label><input type="radio" name="pause" value="0"> Không tự gửi</label>
+        </fieldset>
+        <button class="btn btn-quiet" id="clear-thread" type="button">Xóa cuộc trò chuyện</button>
+        <button class="btn btn-ink" id="open-personal" type="button">Ký hiệu của tôi (dạy app cách bạn ký)</button>
+        <button class="btn btn-ink" id="open-study" type="button">Thử nghiệm với người dùng</button>
+      </div>
+
+      <article class="about">
+        <h2>Ứng dụng làm được gì</h2>
+        <ul>
+          <li>Nhận diện <strong id="about-count">…</strong> ký hiệu đơn lẻ có dữ liệu huấn luyện, mỗi lần một ký hiệu.</li>
+          <li>Chuyển giọng nói tiếng Việt thành chữ và đọc to chữ thành tiếng.</li>
+          <li>Hiện câu soạn sẵn thật to, có thể xoay cho người ngồi đối diện.</li>
+          <li>Đánh vần bằng chữ cái ngón tay (23 chữ cái, dấu mũ, dấu râu), có nút dấu thanh và gợi ý từ có dấu.</li>
+        </ul>
+        <h2>Chưa làm được</h2>
+        <ul>
+          <li>Chưa dịch câu ký hiệu liên tục hay ngữ pháp VSL.</li>
+          <li id="about-missing">Ký hiệu không có trong danh sách hỗ trợ thì chưa nhận diện được.</li>
+          <li>Kết quả chưa được kiểm chứng với người ký VSL; hãy luôn xác nhận trước khi gửi. Ứng dụng không thay thế phiên dịch viên.</li>
+        </ul>
+        <h2>Quyền riêng tư</h2>
+        <p>Hình ảnh camera được xử lý ngay trong trình duyệt và không gửi đi đâu. Khi dùng micro, Chrome hoặc Edge gửi âm thanh tới dịch vụ nhận giọng nói của họ để đổi thành chữ. Hội thoại chỉ lưu trên thiết bị này.</p>
+        <h2>Nguồn dữ liệu</h2>
+        <p>Ký hiệu được học từ bộ dữ liệu <a href="https://huggingface.co/datasets/Kateht/VOYA_VSL" target="_blank" rel="noopener">VOYA_VSL</a> (giấy phép MIT theo trang dữ liệu) và <a href="https://huggingface.co/datasets/namwu/ViSignLanguage-Video" target="_blank" rel="noopener">ViSignLanguage-Video</a> của cuộc thi AI PTIT (CC-BY-4.0 theo người đăng). Hoạt họa là khung xương dựng lại từ tọa độ, không phải video người ký thật.</p>
+        <p>Chữ cái ngón tay học từ ảnh webcam của một người ký trong dự án <a href="https://github.com/TuanKiet1774/SignLanguage_Vietnamese" target="_blank" rel="noopener">SignLanguage_Vietnamese</a> (chưa ghi giấy phép, dùng để thử nghiệm). Gợi ý từ dùng danh sách tần suất từ <a href="https://github.com/hermitdave/FrequencyWords" target="_blank" rel="noopener">FrequencyWords</a> của Hermit Dave (CC-BY-SA-4.0).</p>
+        <p class="version" id="model-version"></p>
+      </article>
+    </section>
+
+
+    <!-- Personal signs -->
+    <section class="view" id="view-personal" aria-labelledby="personal-title" hidden>
+      <div class="page-head">
+        <h1 id="personal-title">Ký hiệu của tôi</h1>
+        <p>Dạy ứng dụng cách bạn ký một từ: ký 3 lần, ứng dụng sẽ ưu tiên đúng cách ký của bạn. Có thể dạy cả từ ứng dụng chưa biết, ví dụ tên riêng hay “tạm biệt”. Chỉ lưu các con số mô tả động tác trên máy này, không lưu hình ảnh.</p>
+      </div>
+      <form class="study-card" id="personal-form" autocomplete="off">
+        <label class="field"><span>Từ muốn dạy</span><input id="personal-word" list="personal-suggestions" placeholder="Ví dụ: tạm biệt" required maxlength="40"></label>
+        <datalist id="personal-suggestions"></datalist>
+        <button class="btn btn-sign" type="submit">Ghi 3 lần</button>
+      </form>
+      <div class="study-run" id="personal-recorder" hidden>
+        <div class="stage">
+          <div class="stage-video">
+            <video id="personal-video" playsinline muted aria-hidden="true"></video>
+            <canvas id="personal-overlay" aria-hidden="true"></canvas>
+          </div>
+          <div class="stage-status" role="status" aria-live="polite">
+            <p class="status-line" id="personal-status"></p>
+            <div class="meter"><span id="personal-fill"></span></div>
+          </div>
+          <div class="stage-actions"><button class="btn btn-light btn-wide" id="personal-cancel" type="button">Xong</button></div>
+        </div>
+      </div>
+      <div class="study-card personal-saved">
+        <h2>Đã dạy</h2>
+        <p id="personal-empty">Chưa có ký hiệu nào.</p>
+        <p class="search-note" id="personal-stale" hidden></p>
+        <ul class="study-results" id="personal-list"></ul>
+      </div>
+    </section>
+    <!-- User study -->
+    <section class="view" id="view-study" aria-labelledby="study-title" hidden>
+      <div class="page-head">
+        <h1 id="study-title">Thử nghiệm với người dùng</h1>
+        <p>Đo độ chính xác thật với người ký VSL. Mỗi lượt, ứng dụng đưa ra một ký hiệu; người tham gia ký và ứng dụng ghi lại kết quả. Không lưu hình ảnh hay video.</p>
+      </div>
+
+      <form class="study-card" id="study-intro">
+        <h2>Trước khi bắt đầu</h2>
+        <label class="field"><span>Mã người tham gia (không ghi tên thật)</span><input id="study-code" type="text" placeholder="Ví dụ: P01" required maxlength="20"></label>
+        <label class="field"><span>Người tham gia là</span>
+          <select id="study-profile">
+            <option>Người Điếc dùng VSL hằng ngày</option>
+            <option>Người nghe kém dùng VSL</option>
+            <option>Phiên dịch viên / giáo viên VSL</option>
+            <option>Người đang học VSL</option>
+            <option>Người chưa biết VSL</option>
+          </select>
+        </label>
+        <label class="field"><span>Vùng ký hiệu quen dùng</span>
+          <select id="study-region"><option>Miền Bắc</option><option>Miền Trung</option><option>Miền Nam</option><option>Không rõ / không muốn trả lời</option></select>
+        </label>
+        <label class="field"><span>Số lượt thử</span>
+          <select id="study-count"><option value="10">10 ký hiệu (khoảng 5 phút)</option><option value="20" selected>20 ký hiệu (khoảng 10 phút)</option><option value="30">30 ký hiệu (khoảng 15 phút)</option></select>
+        </label>
+        <label class="setting toggle"><input type="checkbox" id="study-consent" required> <span>Người tham gia đã được giải thích và đồng ý tham gia. Ứng dụng chỉ lưu kết quả đúng/sai, thời gian và các thông tin trên.</span></label>
+        <label class="setting toggle"><input type="checkbox" id="study-donate"> <span>(Không bắt buộc) Đồng ý lưu tọa độ khung xương của các lượt ký để cải thiện ứng dụng. Không lưu hình ảnh khuôn mặt hay video.</span></label>
+        <button class="btn btn-sign" type="submit">Bắt đầu thử nghiệm</button>
+      </form>
+
+      <div class="study-run" id="study-run" hidden>
+        <div class="study-target">
+          <p class="candidate-label" id="study-progress"></p>
+          <p class="study-word" id="study-word"></p>
+          <p class="study-region-note" id="study-region-note"></p>
+          <div class="candidate-actions">
+            <button class="btn btn-quiet" id="study-demo" type="button">Xem ký hiệu mẫu</button>
+            <button class="btn btn-quiet" id="study-skip" type="button">Bỏ qua từ này</button>
+            <button class="btn btn-quiet" id="study-stop" type="button">Kết thúc sớm</button>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="stage-video">
+            <video id="study-video" playsinline muted aria-hidden="true"></video>
+            <canvas id="study-overlay" aria-hidden="true"></canvas>
+          </div>
+          <div class="stage-status" role="status" aria-live="polite">
+            <p class="status-line" id="study-status">Bấm Bắt đầu ký khi sẵn sàng</p>
+            <div class="meter" id="study-meter" hidden><span id="study-meter-fill"></span></div>
+          </div>
+          <div class="study-feedback" id="study-feedback" hidden></div>
+          <div class="stage-actions">
+            <button class="btn btn-sign btn-wide" id="study-go" type="button">Bắt đầu ký</button>
+            <button class="btn btn-light btn-wide" id="study-next" type="button" hidden>Từ tiếp theo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="study-card" id="study-summary" hidden>
+        <h2>Kết quả</h2>
+        <p class="study-score" id="study-score"></p>
+        <ul class="study-results" id="study-results"></ul>
+        <div class="candidate-actions">
+          <button class="btn btn-sign" id="study-csv" type="button">Tải kết quả (CSV)</button>
+          <button class="btn btn-quiet" id="study-json" type="button" hidden>Tải dữ liệu tọa độ đã đồng ý (JSON)</button>
+          <button class="btn btn-quiet" id="study-again" type="button">Người tham gia mới</button>
+        </div>
+        <p class="sheet-note">Kết quả của tất cả các lượt thử trên thiết bị này được giữ lại trong trình duyệt; tải CSV để tổng hợp. Xem hướng dẫn quy trình trong docs/thu_nghiem_nguoi_dung.md.</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Chuyển màn hình">
+    <button type="button" data-view="talk" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H9l-4 3v-3H4z"/><path d="M20 9v8h-1v3l-3-3h-4"/></svg>
+      <span>Hội thoại</span>
+    </button>
+    <button type="button" data-view="spell">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18 7 6l4 12M4.4 14h5.2M14 6h3.5a3 3 0 0 1 0 6H14zm0 6h4a3 3 0 0 1 0 6h-4z"/></svg>
+      <span>Đánh vần</span>
+    </button>
+    <button type="button" data-view="phrases">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16l-7-4-7 4z"/></svg>
+      <span>Câu nhanh</span>
+    </button>
+    <button type="button" data-view="signs">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5m0-6V4a1.5 1.5 0 0 1 3 0v7m0-5a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-3-5a1.5 1.5 0 0 1 2.5-1.6L8 14"/></svg>
+      <span>Ký hiệu</span>
+    </button>
+    <button type="button" data-view="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2m10-10 2-2"/></svg>
+      <span>Cài đặt</span>
+    </button>
+  </nav>
+
+  <dialog class="show" id="show" aria-label="Hiện chữ thật to">
+    <div class="show-body" id="show-body">
+      <p class="show-who" id="show-who"></p>
+      <p class="show-text" id="show-text"></p>
+    </div>
+    <div class="show-actions">
+      <button class="btn btn-light" id="show-rotate" type="button">Xoay cho người đối diện</button>
+      <button class="btn btn-light" id="show-speak" type="button">Đọc to</button>
+      <button class="btn btn-light" id="show-close" type="button">Đóng</button>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="sign-sheet" aria-labelledby="sheet-title">
+    <div class="sheet-head">
+      <h2 id="sheet-title"></h2>
+      <button class="icon-btn" id="sheet-close" type="button" aria-label="Đóng">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <p class="sheet-region" id="sheet-region"></p>
+    <div class="sheet-media">
+      <div class="stage3d" id="sheet-3d" aria-label="Hoạt họa 3D, kéo để xoay"></div>
+      <img id="sheet-gif" alt="" hidden>
+      <p class="sheet-missing" id="sheet-missing" hidden>Không tải được hoạt họa trên thiết bị này.</p>
+    </div>
+    <div class="viewer-controls" id="viewer-controls" hidden>
+      <button class="btn btn-ink" id="viewer-play" type="button">Tạm dừng</button>
+      <div class="who" role="radiogroup" aria-label="Tốc độ">
+        <label class="who-option speed-option"><input type="radio" name="viewer-speed" value="0.5"> Chậm</label>
+        <label class="who-option speed-option"><input type="radio" name="viewer-speed" value="1" checked> Bình thường</label>
+      </div>
+      <label class="toggle viewer-toggle"><input type="checkbox" id="viewer-mirror"> Lật gương để làm theo</label>
+      <button class="btn btn-quiet" id="viewer-reset" type="button">Nhìn thẳng</button>
+    </div>
+    <p class="sheet-note" id="sheet-note">Mô hình khung xương dựng lại từ dữ liệu, không phải video người ký. Kéo để xoay, chụm hai ngón để phóng to. Màu xanh ngọc là tay trái, xanh dương là tay phải của người ký.</p>
+    <p class="sheet-source" id="sheet-source"></p>
+  </dialog>
+
+  <dialog class="sheet" id="spellout-sheet" aria-labelledby="spellout-title">
+    <div class="sheet-head">
+      <h2 id="spellout-title">Đánh vần bằng chữ cái ngón tay</h2>
+      <button class="icon-btn" id="spellout-close" type="button" aria-label="Đóng">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <p class="sheet-note">Từ chưa có ký hiệu trong ứng dụng. Người nghe có thể đưa màn hình này cho người Điếc xem, hoặc tự làm theo từng chữ. Ô vàng là động tác dấu (chưa có hình mẫu).</p>
+    <div class="spellout" id="spellout-body"></div>
+  </dialog>
+
+  <dialog class="sheet" id="speech-consent" aria-labelledby="consent-title">
+    <h2 id="consent-title">Dùng micro để chuyển giọng nói thành chữ</h2>
+    <p>Trình duyệt (Chrome hoặc Edge) sẽ gửi âm thanh tới dịch vụ nhận giọng nói của họ để đổi thành chữ. SignBridge không lưu âm thanh. Hình ảnh camera vẫn chỉ xử lý trên máy.</p>
+    <div class="candidate-actions">
+      <button class="btn btn-voice" id="consent-yes" type="button">Đồng ý và bắt đầu nói</button>
+      <button class="btn btn-quiet" id="consent-no" type="button">Để sau</button>
+    </div>
+  </dialog>
+
+  <noscript><p class="noscript">SignBridge cần bật JavaScript.</p></noscript>
+  <script type="importmap">{"imports": {"three": "./vendor/three/build/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/"}}</script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
