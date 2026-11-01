@@ -1,6 +1,7 @@
 // "Đánh vần" view: spell names and words letter by letter with the VSL manual
 // alphabet. Hold a letter still to type it; mũ/râu signs change the vowel
-// before them; tones and ă are buttons; word suggestions add the accents.
+// before them; a tone is drawn with the little finger (buttons as fallback);
+// ă is a button; word suggestions add the accents.
 import { SignCamera } from "./camera.js";
 import { LetterModel, LetterSpeller, PersonalLetters } from "./letters.js";
 import { Lexicon, applyMark, applyTone, spellSequence } from "./vnspell.js";
@@ -8,9 +9,42 @@ import { initLetterTest } from "./lettertest.js";
 
 const $ = (id) => document.getElementById(id);
 const MARK_SIGNS = { "mũ": "mu", "râu": "rau" };
+const LETTER_HOW = "Hình là khung bàn tay mẫu, nhìn từ phía camera. Nếu ứng dụng hay nhầm chữ này với tay bạn, hãy dạy lại: làm chữ và giữ yên khoảng 2 giây.";
 const FINGER_LINKS = [[0,1],[1,2],[2,3],[3,4],[5,6],[6,7],[7,8],[9,10],[10,11],[11,12],[13,14],[14,15],[15,16],[17,18],[18,19],[19,20]];
 const PALM = [0, 1, 5, 9, 13, 17];
 const TEACH_FRAMES = 30;
+
+/*
+ * Tone marks and the breve, as taught in VSL courses (Trần Thị Thiệp, hufocw.org,
+ * following Thông tư 17/2020): tones are drawn in the air with only the little
+ * finger out; the breve is the mũ hand with the palm turned up.
+ * Paths are in hand sizes around the little-finger tip, image y down.
+ */
+export const MARKS = [
+  { key: "sac", short: "Sắc", tone: true, name: "Dấu sắc", glyph: "á", how: "Duỗi ngón út, đưa một nét xiên từ dưới lên trên, như viết dấu sắc.", path: "M -0.22 0.32 L 0.26 -0.42" },
+  { key: "huyen", short: "Huyền", tone: true, name: "Dấu huyền", glyph: "à", how: "Duỗi ngón út, đưa một nét xiên từ trên xuống, như viết dấu huyền.", path: "M -0.22 -0.42 L 0.26 0.32" },
+  { key: "hoi", short: "Hỏi", tone: true, name: "Dấu hỏi", glyph: "ả", how: "Duỗi ngón út, vẽ móc câu hỏi: vòng lên rồi kéo xuống.", path: "M -0.24 -0.22 C -0.2 -0.6 0.34 -0.6 0.3 -0.2 C 0.27 0.04 0.02 0.02 0.02 0.36" },
+  { key: "nga", short: "Ngã", tone: true, name: "Dấu ngã", glyph: "ã", how: "Duỗi ngón út, vẽ nét lượn sóng ngang, như viết dấu ngã.", path: "M -0.44 0.06 C -0.3 -0.3 -0.12 -0.3 0 0 S 0.3 0.3 0.44 -0.06" },
+  { key: "nang", short: "Nặng", tone: true, name: "Dấu nặng", glyph: "ạ", how: "Duỗi ngón út, chấm ngắn xuống dưới, như viết dấu chấm.", path: "M 0 -0.34 L 0 0.12", dot: [0, 0.36] },
+  { key: "trang", short: "Trăng", tone: false, name: "Dấu trăng", glyph: "ă", how: "Giống dấu mũ (ngón trỏ và ngón giữa xòe, gập ở đốt thứ hai) nhưng ngửa lòng bàn tay. Ứng dụng chưa nhận dấu này qua camera: bấm nút Trăng.", path: "M -0.3 -0.12 Q 0 0.36 0.3 -0.12" },
+];
+// the arrowhead shows the direction even when animation is off (reduced motion)
+const ARROW = '<defs><marker id="mark-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="2.3" markerHeight="2.3" orient="auto"><path class="mark-arrowhead" d="M0,0 L10,5 L0,10 z"/></marker></defs>';
+const MARK_BY_KEY = Object.fromEntries(MARKS.map((m) => [m.key, m]));
+
+/** A mark card: the little-finger hand (or the mũ hand for ă) with the drawn path. */
+export function markSvg(mark, templates) {
+  const hand = templates[mark.tone ? "i" : "mũ"];
+  if (!hand) return "";
+  const xs = hand.map((p) => p[0]), ys = hand.map((p) => p[1]);
+  const tip = hand[20], wrist = hand[0];
+  const side = tip[0] >= wrist[0] ? 1 : -1;
+  const cx = mark.tone ? tip[0] + side * 0.9 : (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = mark.tone ? tip[1] : Math.max(...ys) + 0.7;
+  const dot = mark.dot ? `<circle cx="${mark.dot[0]}" cy="${mark.dot[1]}" r="0.07"/>` : "";
+  const body = `<g class="mark-path" transform="translate(${cx.toFixed(3)} ${cy.toFixed(3)}) scale(1.3)"><path d="${mark.path}" pathLength="1"${mark.tone ? ' marker-end="url(#mark-arrow)"' : ""}/>${dot}</g>${ARROW}`;
+  return handSvg(hand, { body, box: [cx - 0.75, cy - 0.95, cx + 0.75, cy + 0.75] });
+}
 
 /** Letter name as shown on screen: "a" -> "A", "mũ" -> "Mũ (^)". */
 export function letterName(label) {
@@ -24,9 +58,10 @@ export function letterName(label) {
  * thick fingers painted far-to-near, nearer parts darker, so curled fingers
  * still read as curled in a flat picture.
  */
-export function handSvg(points) {
+export function handSvg(points, overlay = null) {
   const r = (v) => Math.round(v * 1000) / 1000;
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  if (overlay) { xs.push(overlay.box[0], overlay.box[2]); ys.push(overlay.box[1], overlay.box[3]); }
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const span = Math.max(maxX - minX, maxY - minY) || 1;
   const pad = span * 0.14;
@@ -42,7 +77,7 @@ export function handSvg(points) {
     .sort((p, q) => q.d - p.d)
     .map(({ a, b, d }) => `<line x1="${r(points[a][0])}" y1="${r(points[a][1])}" x2="${r(points[b][0])}" y2="${r(points[b][1])}" stroke-opacity="${r(1 - d * 0.55)}" stroke-width="${r(width * (1.15 - d * 0.35))}"/>`)
     .join("");
-  return `<svg viewBox="${view}" aria-hidden="true"><polygon class="palm" points="${palm}" stroke-width="${r(width * 0.5)}" stroke-linejoin="round"/><g class="bones" stroke-linecap="round">${bones}</g></svg>`;
+  return `<svg viewBox="${view}" aria-hidden="true"><polygon class="palm" points="${palm}" stroke-width="${r(width * 0.5)}" stroke-linejoin="round"/><g class="bones" stroke-linecap="round">${bones}</g>${overlay ? overlay.body.replace("<path ", `<path stroke-width="${r(width * 0.7)}" `) : ""}</svg>`;
 }
 
 /** 21 hand points in pixels from a 1,605-value frame (the bigger visible hand). */
@@ -108,6 +143,12 @@ export function initSpell({ onSend, onShow, speak }) {
     setText(state.text + label);
   }
 
+  function addTone(tone) {
+    const { word, changed } = onLastSyllable((t) => applyTone(t, tone));
+    if (!changed) { flash("Chưa có nguyên âm để thêm dấu."); return; }
+    setText(word);
+  }
+
   function flash(message) {
     clearTimeout(state.hint);
     $("spell-hint").textContent = message;
@@ -153,6 +194,20 @@ export function initSpell({ onSend, onShow, speak }) {
       void live.offsetWidth;
       live.classList.add("pop");
       ring.style.setProperty("--p", "1");
+      return;
+    }
+    if (result.tone) {
+      if (!quiz.running) addTone(result.tone);
+      live.textContent = MARK_BY_KEY[result.tone].name;
+      live.classList.remove("pop");
+      void live.offsetWidth;
+      live.classList.add("pop");
+      return;
+    }
+    if (result.stroking) {
+      live.textContent = "";
+      ring.style.setProperty("--p", "0");
+      setStatus("Đang vẽ dấu…", "Vẽ xong thì giữ yên ngón út một chút.");
       return;
     }
     if (result.endSyllable && state.text && !state.text.endsWith(" ")) setText(`${state.text} `);
@@ -222,6 +277,18 @@ export function initSpell({ onSend, onShow, speak }) {
       li.append(b);
       return li;
     }));
+    $("spell-marks").replaceChildren(...MARKS.map((mark) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "letter-card mark-card";
+      b.innerHTML = `${markSvg(mark, state.model.templates)}<span class="letter-name"></span>`;
+      b.querySelector(".letter-name").textContent = `${mark.short} ${mark.glyph}`;
+      b.setAttribute("aria-label", `${mark.name}. ${mark.how}`);
+      b.addEventListener("click", () => openMark(mark));
+      li.append(b);
+      return li;
+    }));
     const count = Object.keys(taught).length;
     $("spell-taught").textContent = count ? `Đã dạy ${count} chữ theo tay bạn.` : "";
   }
@@ -229,14 +296,37 @@ export function initSpell({ onSend, onShow, speak }) {
   function openLetter(label) {
     const panel = $("spell-letter");
     panel.hidden = false;
-    $("spell-letter-name").textContent = letterName(label);
+    $("spell-letter-title").textContent = `Chữ ${letterName(label)}`;
+    $("spell-letter-how").textContent = LETTER_HOW;
     const tpl = state.model.templates[label];
     $("spell-letter-hand").innerHTML = tpl ? handSvg(tpl) : "";
     const taught = !!state.personal.forModel(version())[label];
+    $("spell-letter-teach").hidden = false;
+    $("spell-letter-type").textContent = "Nhập chữ này";
     $("spell-letter-forget").hidden = !taught;
     $("spell-letter-teach").onclick = () => startTeach(label);
     $("spell-letter-forget").onclick = () => { state.personal.remove(version(), label); renderChart(); openLetter(label); flash(`Đã xóa mẫu chữ ${letterName(label)} của bạn.`); };
     $("spell-letter-type").onclick = () => { addLetter(label); panel.hidden = true; };
+    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function openMark(mark) {
+    const panel = $("spell-letter");
+    panel.hidden = false;
+    $("spell-letter-title").textContent = `${mark.name} (${mark.glyph})`;
+    $("spell-letter-how").textContent = mark.how;
+    $("spell-letter-hand").innerHTML = markSvg(mark, state.model.templates);
+    $("spell-letter-teach").hidden = true;
+    $("spell-letter-forget").hidden = true;
+    $("spell-letter-type").textContent = "Thêm dấu này";
+    $("spell-letter-type").onclick = () => {
+      if (mark.tone) addTone(mark.key);
+      else {
+        const { word, changed } = onLastSyllable((t) => applyMark(t, mark.key));
+        if (changed) setText(word); else flash("Dấu trăng đi sau a.");
+      }
+      panel.hidden = true;
+    };
     panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
@@ -271,9 +361,7 @@ export function initSpell({ onSend, onShow, speak }) {
   $("spell-camera").addEventListener("click", toggleCamera);
   for (const button of document.querySelectorAll("[data-tone]")) {
     button.addEventListener("click", () => {
-      const { word, changed } = onLastSyllable((t) => applyTone(t, button.dataset.tone));
-      if (!changed) { flash("Chưa có nguyên âm để thêm dấu."); return; }
-      setText(word);
+      addTone(button.dataset.tone);
     });
   }
   for (const button of document.querySelectorAll("[data-mark]")) {
@@ -320,7 +408,15 @@ export function initSpell({ onSend, onShow, speak }) {
       const list = document.createElement("ol");
       for (const step of steps) {
         const li = document.createElement("li");
-        if (step.motion) {
+        const mark = MARK_BY_KEY[step.tone || step.mark];
+        if (mark && state.model) {
+          li.className = "spellout-letter spellout-mark";
+          li.innerHTML = markSvg(mark, state.model.templates);
+          const name = document.createElement("span");
+          name.textContent = mark.name;
+          li.title = mark.how;
+          li.append(name);
+        } else if (step.motion) {
           li.className = "spellout-motion";
           li.textContent = step.motion;
         } else {

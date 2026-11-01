@@ -400,6 +400,10 @@ fieldset.setting legend { float: left; width: 100%; font-weight: 600; margin-bot
 .spellout-letter svg { width: 80px; height: 72px; }
 .spellout-letter .palm { fill: var(--voice-soft); stroke: var(--voice); }
 .spellout-letter .bones { stroke: var(--sign); }
+.mark-path path { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; animation: draw-mark 2.4s ease-in-out infinite; }
+.mark-path circle, .mark-arrowhead { fill: var(--ink); }
+@keyframes draw-mark { 0% { stroke-dashoffset: 1; } 55%, 100% { stroke-dashoffset: 0; } }
+.spellout-mark { background: var(--surface); }
 .spellout-motion { background: var(--voice-soft); border-color: var(--voice-fill); align-content: center; text-align: center; font-weight: 600; font-size: .95rem; grid-template-rows: auto; }
 .spell-board[data-quiz] > :not(.quiz-run) { display: none; }
 .quiz-run { display: grid; gap: 14px; }

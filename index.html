@@ -179,8 +179,8 @@
       <div class="study-card spell-letter" id="spell-letter" hidden>
         <div class="spell-letter-hand" id="spell-letter-hand"></div>
         <div>
-          <h2>Chữ <span id="spell-letter-name"></span></h2>
-          <p>Hình là khung bàn tay mẫu, nhìn từ phía camera. Nếu ứng dụng hay nhầm chữ này với tay bạn, hãy dạy lại: làm chữ và giữ yên khoảng 2 giây.</p>
+          <h2 id="spell-letter-title"></h2>
+          <p id="spell-letter-how">Hình là khung bàn tay mẫu, nhìn từ phía camera. Nếu ứng dụng hay nhầm chữ này với tay bạn, hãy dạy lại: làm chữ và giữ yên khoảng 2 giây.</p>
           <div class="candidate-actions">
             <button class="btn btn-sign" id="spell-letter-teach" type="button">Dạy chữ này theo tay tôi</button>
             <button class="btn btn-quiet" id="spell-letter-type" type="button">Nhập chữ này</button>
@@ -191,8 +191,11 @@
       </div>
 
       <h2 class="section-title">Bảng chữ cái ngón tay</h2>
-      <p class="section-note">23 chữ cái và 2 dấu (mũ, râu) theo chuẩn VSL. Dấu thanh và dấu trăng là động tác chuyển động, chưa có dữ liệu để nhận diện, nên dùng các nút ở trên. <span id="spell-taught"></span></p>
+      <p class="section-note">23 chữ cái và 2 dấu (mũ, râu) theo chuẩn VSL. <span id="spell-taught"></span></p>
       <ul class="letter-grid" id="spell-chart"></ul>
+      <h2 class="section-title">Dấu thanh và dấu trăng</h2>
+      <p class="section-note">Dấu thanh: chỉ duỗi ngón út rồi đưa ngón út vẽ dấu trong không trung, sau khi đánh xong các chữ cái của tiếng. Ứng dụng thử nhận nét vẽ này; nếu chưa nhận được, bấm nút dấu ở trên. Dấu trăng giống dấu mũ nhưng ngửa lòng bàn tay, hiện chỉ nhập bằng nút.</p>
+      <ul class="letter-grid" id="spell-marks"></ul>
       <section class="study-card quiz-card" aria-labelledby="quiz-title">
         <h2 id="quiz-title">Kiểm tra bảng chữ cái với người thật</h2>
         <p>Ứng dụng đưa ra chữ ngẫu nhiên, người thử ký và ứng dụng ghi đúng, nhầm hay hết giờ (10 giây). Không lưu hình ảnh. Dùng để biết ứng dụng nhận tay người thật tốt đến đâu.</p>

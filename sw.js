@@ -1,7 +1,7 @@
 // Offline support: the app shell is fetched network-first (so updates show up),
 // large immutable assets (MediaPipe, fonts, model, animations) cache-first.
 // Paths are relative to this file so the app also works under a subpath (GitHub Pages).
-const CACHE = "signbridge-web-v4";
+const CACHE = "signbridge-web-v5";
 const SHELL = ["./", "index.html", "styles.css", "manifest.webmanifest", "icons/icon.svg",
   "js/app.js", "js/recognizer.js", "js/lookup.js", "js/phrases.js", "js/camera.js", "js/speech.js",
   "js/study.js", "js/viewer3d.js", "js/compose.js", "js/personal.js", "js/letters.js", "js/vnspell.js", "js/spell.js", "js/lettertest.js",

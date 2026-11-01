@@ -150,10 +150,73 @@ export class PersonalLetters {
 }
 export const PERSONAL_RADIUS = 0.35; // RMS in standardized units; ~94% own-letter hits, ~2% other letters on held-out frames
 
+/*
+ * Tones: VSL signs them with only the little finger out, drawing the mark in
+ * the air (sắc up, huyền down to the side, hỏi a hook, ngã a wave, nặng a
+ * short drop). No recorded data exists, so these are geometric rules on the
+ * little-finger path; directions use image up/down only, so either hand and a
+ * mirrored camera give the same result.
+ */
+export const STROKE_WINDOW = 6;       // frames looked back to start a stroke
+export const STROKE_START = 0.18;     // little-finger tip travel (hand sizes) within the window that starts one
+export const STROKE_STOP = 0.08;      // travel over the last 3 frames below this ends it
+export const STROKE_SHAPE_GRACE = 5; // frames the hand may lose the shape mid-stroke (motion blur)
+export const STROKE_MAX_FRAMES = 45;
+export const STROKE_MIN_LENGTH = 0.4; // hand sizes
+export const PINKY_HOLD_FRAMES = 14;  // I and Y share the tone hand shape, so they need a longer hold
+
+/** Only the little finger out (I, Y and the tone hand): from 21 points in any units. */
+export function pinkyOnly(points) {
+  const d = (a, b) => Math.hypot(points[a][0] - points[b][0], points[a][1] - points[b][1], points[a][2] - points[b][2]);
+  const size = d(0, 9);
+  if (size <= 1e-6) return false;
+  return d(20, 0) / size >= 1.7 && [8, 12, 16].every((tip) => d(tip, 0) / size <= 1.2);
+}
+
+/**
+ * Tone for a little-finger path ([[x, y]] in hand sizes, image y down), or
+ * null when it is not a clear mark.
+ */
+export function classifyStroke(path) {
+  if (path.length < 3) return null;
+  // light smoothing so camera jitter does not read as a curve or a wave
+  path = path.map((p, i) => {
+    const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
+    return [(a[0] + p[0] + b[0]) / 3, (a[1] + p[1] + b[1]) / 3];
+  });
+  let length = 0;
+  for (let i = 1; i < path.length; i++) length += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+  if (length < STROKE_MIN_LENGTH) return null;
+  const [x0, y0] = path[0], [x1, y1] = path[path.length - 1];
+  const dx = x1 - x0, dy = y1 - y0;
+  const straight = Math.hypot(dx, dy) / length;
+  const xs = path.map((p) => p[0]), ys = path.map((p) => p[1]);
+  const width = Math.max(...xs) - Math.min(...xs), height = Math.max(...ys) - Math.min(...ys);
+  const turns = (values) => {
+    // direction changes larger than a small hysteresis, so jitter is not a turn
+    let count = 0, dir = 0, anchor = values[0];
+    for (const v of values) {
+      const step = v - anchor;
+      if (Math.abs(step) < 0.12) continue;
+      const now = Math.sign(step);
+      if (dir && now !== dir) count++;
+      dir = now;
+      anchor = v;
+    }
+    return count;
+  };
+  const yTurns = turns(ys);
+  if (yTurns >= 2 || (yTurns >= 1 && width > height * 1.1 && straight < 0.85)) return "nga";
+  if (straight < 0.7) return "hoi";
+  if (dy < 0 && -dy >= 0.35 * Math.hypot(dx, dy)) return "sac";
+  if (dy > 0 && dy >= 0.35 * Math.hypot(dx, dy)) return Math.abs(dx) >= 0.4 * dy ? "huyen" : "nang";
+  return null;
+}
+
 /**
  * Turns per-frame hands into committed letters. One held pose = one letter:
  * after a commit the letter is locked until the hand changes shape or drops,
- * so holding a sign never types it twice.
+ * so holding a sign never types it twice. A moving little finger draws a tone.
  */
 export class LetterSpeller {
   constructor(model, { personal = null, version = "" } = {}) {
@@ -172,6 +235,9 @@ export class LetterSpeller {
     this.missing = 0;
     this.previous = null;
     this.syllableOpen = false;
+    this.stroke = null;
+    this.tips = [];
+    this.size = 0;
   }
 
   /** Call when the text was edited by hand, so a lowered hand does not add a space. */
@@ -179,11 +245,15 @@ export class LetterSpeller {
 
   /**
    * points: 21 x [x, y, z] pixels or null. Returns
-   * { label, progress, commit, endSyllable, hand } — commit is the letter to add now.
+   * { label, progress, commit, tone, stroking, endSyllable, hand } — commit is the
+   * letter to add now, tone a drawn tone mark ("sac", "huyen", "hoi", "nga", "nang").
    */
   push(points) {
-    const out = { label: null, progress: 0, commit: null, endSyllable: false, hand: !!points };
+    const out = { label: null, progress: 0, commit: null, tone: null, stroking: false, endSyllable: false, hand: !!points };
     if (!points) {
+      if (this.stroke) this.finishStroke({ keep: false }); // lowering the hand is not a mark
+      this.tips = [];
+      this.size = 0;
       this.missing++;
       this.previous = null;
       this.candidate = null;
@@ -200,6 +270,7 @@ export class LetterSpeller {
       motion /= 21 * size;
     }
     this.previous = points;
+    if (this.trackStroke(points, out)) return out;
     const result = this.model.classify(points);
     let label = result.score >= MIN_SCORE ? result.label : null;
     const own = this.personal?.match(this.version, result.row);
@@ -219,8 +290,9 @@ export class LetterSpeller {
       this.candidate = label && label !== this.locked ? label : null;
       this.streak = 0;
     }
-    out.progress = this.candidate ? Math.min(1, this.streak / HOLD_FRAMES) : 0;
-    if (this.candidate && this.streak >= HOLD_FRAMES) {
+    const hold = this.candidate === "i" || this.candidate === "y" ? PINKY_HOLD_FRAMES : HOLD_FRAMES;
+    out.progress = this.candidate ? Math.min(1, this.streak / hold) : 0;
+    if (this.candidate && this.streak >= hold) {
       out.commit = this.candidate;
       this.locked = this.candidate;
       this.away = 0;
@@ -230,5 +302,46 @@ export class LetterSpeller {
       this.syllableOpen = true;
     }
     return out;
+  }
+
+  /** Follows a little-finger stroke; true while one is being drawn (no letters meanwhile). */
+  trackStroke(points, out) {
+    // a smoothed hand size: per-frame size jitter would otherwise move the scaled tip
+    const size = Math.max(1e-6, Math.hypot(points[9][0] - points[0][0], points[9][1] - points[0][1]));
+    this.size = this.size ? this.size * 0.8 + size * 0.2 : size;
+    const tip = [points[20][0] / this.size, points[20][1] / this.size];
+    const shape = pinkyOnly(points);
+    const travel = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (!this.stroke) {
+      this.tips = shape ? [...this.tips.slice(1 - STROKE_WINDOW), tip] : [];
+      if (this.tips.length < 2 || travel(tip, this.tips[0]) < STROKE_START) return false;
+      // the path starts where the finger was before it moved, so short marks keep their length
+      this.stroke = { path: [...this.tips], off: 0 };
+      this.candidate = null;
+      this.streak = 0;
+    } else {
+      this.stroke.path.push(tip);
+    }
+    const st = this.stroke;
+    st.off = shape ? 0 : st.off + 1;
+    out.stroking = true;
+    const n = st.path.length;
+    const stopped = n >= STROKE_WINDOW && travel(st.path[n - 1], st.path[n - 4]) < STROKE_STOP;
+    // Only a stroke that ends with the hand still in view and in shape counts; a hand
+    // relaxing or dropping out of the picture is not a mark.
+    if (stopped || n >= STROKE_MAX_FRAMES) out.tone = this.finishStroke({ keep: true, held: shape ? "i" : null });
+    else if (st.off >= STROKE_SHAPE_GRACE) this.finishStroke({ keep: false });
+    return true;
+  }
+
+  finishStroke({ keep, held = null }) {
+    const st = this.stroke;
+    this.stroke = null;
+    this.tips = [];
+    // The hand usually stays in the little-finger shape: do not type an I after the mark.
+    if (held) this.locked = held;
+    const tone = keep ? classifyStroke(st.path) : null;
+    if (tone) this.syllableOpen = true;
+    return tone;
   }
 }

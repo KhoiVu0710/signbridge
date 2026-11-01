@@ -210,9 +210,9 @@ export function spellSequence(text) {
       else if (/[a-z]/.test(plain)) steps.push({ letter: plain });
       else continue;
       if (MARK_SIGN[base]) steps.push({ letter: MARK_SIGN[base] });
-      if (base === "ă") steps.push({ motion: "dấu trăng" });
+      if (base === "ă") steps.push({ motion: "dấu trăng", mark: "trang" });
     }
-    if (tone) steps.push({ motion: TONE_MOTION[tone] });
+    if (tone) steps.push({ motion: TONE_MOTION[tone], tone: TONES[tone] });
     if (steps.length) out.push({ syllable, steps });
   }
   return out;
